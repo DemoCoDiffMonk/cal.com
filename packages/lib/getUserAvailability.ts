@@ -39,6 +39,7 @@ import type { TimeRange } from "@calcom/types/schedule";
 import { getBusyTimesService } from "./di/containers/BusyTimes";
 import { getPeriodStartDatesBetween as getPeriodStartDatesBetweenUtil } from "./intervalLimits/utils/getPeriodStartDatesBetween";
 import { withReporting } from "./sentryWrapper";
+import { normalizeTimeZoneId } from "@calcom/lib/timezone/normalizeTimeZone";
 
 const log = logger.getSubLogger({ prefix: ["getUserAvailability"] });
 const availabilitySchema = z
@@ -397,6 +398,8 @@ export class UserAvailabilityService {
         ? calendarTimezone
         : schedule?.timeZone || fallbackTimezoneIfScheduleIsMissing;
 
+    const normalizedFinalTimezone = normalizeTimeZoneId(finalTimezone);
+
     let busyTimesFromLimits: EventBusyDetails[] = [];
 
     if (initialData?.busyTimesFromLimits && initialData?.eventTypeForLimits) {
@@ -467,7 +470,7 @@ export class UserAvailabilityService {
       log.error(`Error fetching busy times for user ${username}:`, error);
       return {
         busy: [],
-        timeZone: finalTimezone,
+        timeZone: normalizedFinalTimezone,
         dateRanges: [],
         oooExcludedDateRanges: [],
         workingHours: [],
@@ -583,7 +586,7 @@ export class UserAvailabilityService {
 
     const result = {
       busy: detailedBusyTimes,
-      timeZone: finalTimezone,
+      timeZone: normalizedFinalTimezone,
       dateRanges: dateRangesInWhichUserIsAvailable,
       oooExcludedDateRanges: dateRangesInWhichUserIsAvailableWithoutOOO,
       workingHours,

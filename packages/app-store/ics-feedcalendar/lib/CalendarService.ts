@@ -3,6 +3,7 @@
 import ICAL from "ical.js";
 
 import dayjs from "@calcom/dayjs";
+import { normalizeTimeZoneId } from "@calcom/lib/timezone/normalizeTimeZone";
 import { symmetricDecrypt } from "@calcom/lib/crypto";
 import type {
   Calendar,
@@ -166,7 +167,7 @@ export default class ICSFeedCalendarService implements Calendar {
         const tzid: string | undefined = vevent?.getFirstPropertyValue("tzid") || isUTC ? "UTC" : timezone;
         // In case of icalendar, when only tzid is available without vtimezone, we need to add vtimezone explicitly to take care of timezone diff
         if (!vcalendar.getFirstSubcomponent("vtimezone")) {
-          const timezoneToUse = tzid || userTimeZone;
+          const timezoneToUse = normalizeTimeZoneId(tzid || userTimeZone);
           if (timezoneToUse) {
             try {
               const timezoneComp = new ICAL.Component("vtimezone");

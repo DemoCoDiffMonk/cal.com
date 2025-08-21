@@ -34,6 +34,7 @@ import type { CredentialPayload } from "@calcom/types/Credential";
 import { getLocation, getRichDescription } from "./CalEventParser";
 import { symmetricDecrypt } from "./crypto";
 import logger from "./logger";
+import { normalizeTimeZoneId } from "@calcom/lib/timezone/normalizeTimeZone";
 
 const TIMEZONE_FORMAT = "YYYY-MM-DDTHH:mm:ss[Z]";
 const DEFAULT_CALENDAR_TYPE = "caldav";
@@ -652,11 +653,11 @@ export default abstract class BaseCalendarService implements Calendar {
             vcalendar.getFirstSubcomponent("vtimezone")?.getFirstPropertyValue<string>("tzid") || "";
 
           const startDate = calendarTimezone
-            ? dayjs.tz(event.startDate.toString(), calendarTimezone)
+            ? dayjs.tz(event.startDate.toString(), normalizeTimeZoneId(calendarTimezone))
             : new Date(event.startDate.toUnixTime() * 1000);
 
           const endDate = calendarTimezone
-            ? dayjs.tz(event.endDate.toString(), calendarTimezone)
+            ? dayjs.tz(event.endDate.toString(), normalizeTimeZoneId(calendarTimezone))
             : new Date(event.endDate.toUnixTime() * 1000);
 
           return {
