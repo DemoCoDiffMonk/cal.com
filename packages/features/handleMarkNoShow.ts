@@ -129,6 +129,20 @@ const handleMarkNoShow = async ({
         },
       });
 
+      // Emit webhook for host no-show updates as well
+      const { webhooks, bookingId } = await getWebhooksService(
+        bookingUid,
+        platformClientParams?.platformClientId
+      );
+
+      await webhooks.sendPayload({
+        message: t("booking_no_show_updated"),
+        attendees: [],
+        bookingUid,
+        bookingId,
+        ...(platformClientParams ? platformClientParams : {}),
+      });
+
       responsePayload.setNoShowHost(true);
       responsePayload.setMessage(t("booking_no_show_updated"));
     }
