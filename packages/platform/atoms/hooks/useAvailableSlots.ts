@@ -21,6 +21,7 @@ export const useAvailableSlots = ({
       QUERY_KEY,
       rest.startTime,
       rest.endTime,
+      rest.timeZone,
       rest.eventTypeId,
       rest.eventTypeSlug,
       rest.isTeamEvent ?? false,
