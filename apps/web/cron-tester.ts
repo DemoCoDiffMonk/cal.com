@@ -26,6 +26,7 @@ try {
         fetchCron("/calendar-cache/cron"),
         // fetchCron("/cron/calVideoNoShowWebhookTriggers"),
         //
+        fetchCron("/cron/webhookTriggers"),
         fetchCron("/tasks/cron"),
       ]);
     },
