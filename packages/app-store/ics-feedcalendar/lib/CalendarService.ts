@@ -150,7 +150,22 @@ export default class ICSFeedCalendarService implements Calendar {
 
     calendars.forEach(({ vcalendar }) => {
       const vevents = vcalendar.getAllSubcomponents("vevent");
+      // Partition into master events and exception overrides (RECURRENCE-ID)
+      const exceptionsByUid: { [uid: string]: ICAL.Component[] } = {};
+      const masters: ICAL.Component[] = [];
       vevents.forEach((vevent) => {
+        const hasRecurrenceId = !!vevent.getFirstProperty("recurrence-id");
+        const uid = vevent.getFirstPropertyValue<string>("uid");
+        if (hasRecurrenceId && uid) {
+          const arr = exceptionsByUid[uid] || [];
+          arr.push(vevent);
+          exceptionsByUid[uid] = arr;
+        } else {
+          masters.push(vevent);
+        }
+      });
+
+      masters.forEach((vevent) => {
         // if event status is free or transparent, DON'T return (unlike usual getAvailability)
         //
         // commented out because a lot of public ICS feeds that describe stuff like
@@ -163,7 +178,7 @@ export default class ICSFeedCalendarService implements Calendar {
         const timezone = dtstart ? dtstart["timezone"] : undefined;
         // We check if the dtstart timezone is in UTC which is actually represented by Z instead, but not recognized as that in ICAL.js as UTC
         const isUTC = timezone === "Z";
-        const tzid: string | undefined = vevent?.getFirstPropertyValue("tzid") || isUTC ? "UTC" : timezone;
+        const tzid: string | undefined = vevent?.getFirstPropertyValue("tzid") || (isUTC ? "UTC" : timezone);
         // In case of icalendar, when only tzid is available without vtimezone, we need to add vtimezone explicitly to take care of timezone diff
         if (!vcalendar.getFirstSubcomponent("vtimezone")) {
           const timezoneToUse = tzid || userTimeZone;
@@ -204,6 +219,15 @@ export default class ICSFeedCalendarService implements Calendar {
             return;
           }
 
+          // Build exception index for quick lookup by recurrence-id for this UID
+          const uid = vevent.getFirstPropertyValue<string>("uid");
+          const exceptions = (uid ? exceptionsByUid[uid] : []) || [];
+          const exceptionIndex: { [rid: number]: ICAL.Component } = {};
+          exceptions.forEach((exc) => {
+            const rid = exc.getFirstPropertyValue("recurrence-id") as ICAL.Time | undefined;
+            if (rid) exceptionIndex[rid.toUnixTime()] = exc;
+          });
+
           const start = dayjs(dateFrom);
           const end = dayjs(dateTo);
           const startDate = ICAL.Time.fromDateTimeString(startISOString);
@@ -234,21 +258,48 @@ export default class ICSFeedCalendarService implements Calendar {
               }
             }
             if (!currentEvent) return;
-            // do not mix up caldav and icalendar! For the recurring events here, the timezone
-            // provided is relevant, not as pointed out in https://datatracker.ietf.org/doc/html/rfc4791#section-9.6.5
-            // where recurring events are always in utc (in caldav!). Thus, apply the time zone here.
-            if (vtimezone) {
-              const zone = new ICAL.Timezone(vtimezone);
-              currentEvent.startDate = currentEvent.startDate.convertToZone(zone);
-              currentEvent.endDate = currentEvent.endDate.convertToZone(zone);
-            }
-            currentStart = dayjs(currentEvent.startDate.toJSDate());
+            // Determine if this occurrence has an override (RECURRENCE-ID)
+            const ridUnix = currentEvent.recurrenceId?.toUnixTime?.()
+              ? currentEvent.recurrenceId.toUnixTime()
+              : current.toUnixTime();
+            const exceptionComp = exceptionIndex[ridUnix];
 
-            if (currentStart.isBetween(start, end) === true) {
-              events.push({
-                start: currentStart.toISOString(),
-                end: dayjs(currentEvent.endDate.toJSDate()).toISOString(),
-              });
+            if (exceptionComp) {
+              // Skip if overridden instance is CANCELLED
+              const status = exceptionComp.getFirstPropertyValue<string>("status");
+              if (status === "CANCELLED") {
+                continue;
+              }
+              const exceptionEvent = new ICAL.Event(exceptionComp);
+              if (vtimezone) {
+                const zone = new ICAL.Timezone(vtimezone);
+                exceptionEvent.startDate = exceptionEvent.startDate.convertToZone(zone);
+                exceptionEvent.endDate = exceptionEvent.endDate.convertToZone(zone);
+              }
+              const excStart = dayjs(exceptionEvent.startDate.toJSDate());
+              if (excStart.isBetween(start, end) === true) {
+                events.push({
+                  start: excStart.toISOString(),
+                  end: dayjs(exceptionEvent.endDate.toJSDate()).toISOString(),
+                });
+              }
+            } else {
+              // do not mix up caldav and icalendar! For the recurring events here, the timezone
+              // provided is relevant, not as pointed out in https://datatracker.ietf.org/doc/html/rfc4791#section-9.6.5
+              // where recurring events are always in utc (in caldav!). Thus, apply the time zone here.
+              if (vtimezone) {
+                const zone = new ICAL.Timezone(vtimezone);
+                currentEvent.startDate = currentEvent.startDate.convertToZone(zone);
+                currentEvent.endDate = currentEvent.endDate.convertToZone(zone);
+              }
+              currentStart = dayjs(currentEvent.startDate.toJSDate());
+
+              if (currentStart.isBetween(start, end) === true) {
+                events.push({
+                  start: currentStart.toISOString(),
+                  end: dayjs(currentEvent.endDate.toJSDate()).toISOString(),
+                });
+              }
             }
           }
           if (maxIterations <= 0) {
